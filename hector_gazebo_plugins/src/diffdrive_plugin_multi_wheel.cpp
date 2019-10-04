@@ -29,7 +29,7 @@
 /*
  * \file  gazebo_ros_diff_drive.cpp
  *
- * \brief A differential drive plugin for gazebo. Based on the diffdrive plugin 
+ * \brief A differential drive plugin for gazebo. Based on the diffdrive plugin
  * developed for the erratic robot (see copyright notice above). The original
  * plugin can be found in the ROS package gazebo_erratic_plugins.
  *
@@ -118,10 +118,10 @@ namespace gazebo {
 
     this->robot_namespace_ = "";
     if (!_sdf->HasElement("robotNamespace")) {
-      ROS_INFO("GazeboRosDiffDriveMultiWheel Plugin missing <robotNamespace>, defaults to \"%s\"", 
+      ROS_INFO("GazeboRosDiffDriveMultiWheel Plugin missing <robotNamespace>, defaults to \"%s\"",
           this->robot_namespace_.c_str());
     } else {
-      this->robot_namespace_ = 
+      this->robot_namespace_ =
         _sdf->GetElement("robotNamespace")->Get<std::string>() + "/";
     }
 
@@ -146,16 +146,24 @@ namespace gazebo {
       ROS_WARN("GazeboRosDiffDriveMultiWheel Plugin (ns = %s) missing <wheelSeparation>, defaults to %f",
           this->robot_namespace_.c_str(), this->wheel_separation_);
     } else {
-      this->wheel_separation_ = 
+      this->wheel_separation_ =
         _sdf->GetElement("wheelSeparation")->Get<double>();
     }
 
-    this->wheel_diameter_ = 0.15;
+    this->sdf_has_wheel_diameter = false;
+    this->default_wheel_diameter = 0.15;
     if (!_sdf->HasElement("wheelDiameter")) {
       ROS_WARN("GazeboRosDiffDriveMultiWheel Plugin (ns = %s) missing <wheelDiameter>, defaults to %f",
-          this->robot_namespace_.c_str(), this->wheel_diameter_);
+          this->robot_namespace_.c_str(), this->default_wheel_diameter);
     } else {
-      this->wheel_diameter_ = _sdf->GetElement("wheelDiameter")->Get<double>();
+      this->sdf_has_wheel_diameter = true;
+      std::string diameter_string = _sdf->GetElement("wheelDiameter")->Get<std::string>();
+      boost::split( this->diameter_string_, diameter_string, boost::is_any_of(" ") );
+      this->wheel_diameter_.resize(this->diameter_string_.size());
+      for (int i = 0; i < this->diameter_string_.size(); i++) {
+        ROS_WARN("Wheel diameters (%f)", ::atof(this->diameter_string_[i].c_str()));
+        this->wheel_diameter_[i] = ::atof(this->diameter_string_[i].c_str());
+      }
     }
 
     this->torque = 5.0;
@@ -260,6 +268,8 @@ namespace gazebo {
 #else
         joints_[side][i]->SetMaxForce(0, torque);
 #endif
+
+        joints_[side][i]->SetParam ( "fmax", 0, torque );
       }
     }
 
@@ -289,11 +299,11 @@ namespace gazebo {
     odometry_publisher_ = rosnode_->advertise<nav_msgs::Odometry>(odometry_topic_, 1);
 
     // start custom queue for diff drive
-    this->callback_queue_thread_ = 
+    this->callback_queue_thread_ =
       boost::thread(boost::bind(&GazeboRosDiffDriveMultiWheel::QueueThread, this));
 
     // listen to the update event (broadcast every simulation iteration)
-    this->update_connection_ = 
+    this->update_connection_ =
       event::Events::ConnectWorldUpdateBegin(
           boost::bind(&GazeboRosDiffDriveMultiWheel::UpdateChild, this));
 
@@ -306,7 +316,7 @@ namespace gazebo {
 #else
     common::Time current_time = this->world->GetSimTime();
 #endif
-    double seconds_since_last_update = 
+    double seconds_since_last_update =
       (current_time - last_update_time_).Double();
     if (seconds_since_last_update > update_period_) {
 
@@ -316,12 +326,14 @@ namespace gazebo {
 
       // Update robot in case new velocities have been requested
       getWheelVelocities();
-      //joints[LEFT]->SetVelocity(0, wheel_speed_[LEFT] / wheel_diameter_);
-      //joints[RIGHT]->SetVelocity(0, wheel_speed_[RIGHT] / wheel_diameter_);
 
       for (size_t side = 0; side < 2; ++side){
         for (size_t i = 0; i < joints_[side].size(); ++i){
-          joints_[side][i]->SetVelocity(0, wheel_speed_[side] / (0.5 * wheel_diameter_));
+          if (this->sdf_has_wheel_diameter) {
+            joints_[side][i]->SetParam( "vel", 0, wheel_speed_[side] / (0.5 * this->wheel_diameter_[i]) );
+          } else {
+            joints_[side][i]->SetParam( "vel", 0, wheel_speed_[side] / (0.5 * this->default_wheel_diameter) );
+          }
         }
       }
 
@@ -367,9 +379,9 @@ namespace gazebo {
 
   void GazeboRosDiffDriveMultiWheel::publishOdometry(double step_time) {
     ros::Time current_time = ros::Time::now();
-    std::string odom_frame = 
+    std::string odom_frame =
       tf::resolve(tf_prefix_, odometry_frame_);
-    std::string base_footprint_frame = 
+    std::string base_footprint_frame =
       tf::resolve(tf_prefix_, robot_base_frame_);
 
     // getting data for base_footprint to odom transform

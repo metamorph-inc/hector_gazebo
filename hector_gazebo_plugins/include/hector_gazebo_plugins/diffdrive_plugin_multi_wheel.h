@@ -29,7 +29,7 @@
 /*
  * \file  gazebo_ros_diff_drive.h
  *
- * \brief A differential drive plugin for gazebo. Based on the diffdrive plugin 
+ * \brief A differential drive plugin for gazebo. Based on the diffdrive plugin
  * developed for the erratic robot (see copyright notice above). The original
  * plugin can be found in the ROS package gazebo_erratic_plugins.
  *
@@ -123,7 +123,10 @@ namespace gazebo {
       std::vector<std::string> joint_names_[2];
 
       double wheel_separation_;
-      double wheel_diameter_;
+      std::vector<std::string> diameter_string_;
+      std::vector<double> wheel_diameter_;
+      double default_wheel_diameter;
+      bool sdf_has_wheel_diameter;
       double torque;
       double wheel_speed_[2];
 
